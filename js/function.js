@@ -9,7 +9,7 @@ function Initialize()
 {
     userInfo   = getUser();
     if(!userInfo) {return;}
-    LoopCheck();
+    Loop();
 
     chrome.tabs.getSelected(null,function(tab)
     {

@@ -1,3 +1,5 @@
+//TODO 规范命名，现在变量名称太糟糕了。。。
+
 var baseServer = 'http://monitor.xiao3.org/';
 var userInfo   = getUser();
 
@@ -15,14 +17,13 @@ function Initialize()
         if(host.protocol == 'http' || host.protocol == 'https')
         {
             var link = host.protocol + '://' + host.domain + '/';
-            var mySiteList = getCache('mySiteList');
-            //console.log(mySiteList);
+            var SiteList = getCache('SiteList');
             var hasCache = false;
-            if(mySiteList)
+            if(SiteList)
             {
-                for (var i in mySiteList )
+                for (var i in SiteList )
                 {
-                    var temp = mySiteList[i];
+                    var temp = SiteList[i];
                     //console.log(temp);
                     if(temp.item_link == link)
                     {
@@ -41,109 +42,109 @@ function Initialize()
     $('#popupBox').html('<h2 id="this_addr">'+userInfo.user_mail+'</h2>');
 }
 
-function LoopCheck()
+function Loop()
 {
-
     var debug_time = new Date();//last_test_time;
     console.log('');
     console.log( '当前时间：' + debug_time);
-    //console.log(parseInt('sda'));
 
-    userInfo   = getUser();
-    var myTasks = getCache('myTasks');
-    var myLastReport = getCache('myLastReport');
+    userInfo  = getUser();
+    var Tasks = getCache('Tasks');
+    var LastSync = getCache('LastSync');
     var date  = new Date();
-    var curr_report_time = date.getTime();
-    var report_count     = myLastReport ? myLastReport.count : 0;
-    var last_report_time = myLastReport ? myLastReport.time  : 0;
-    var tobe_report_time = curr_report_time - last_report_time;
-    var tobe_report_loop = myTasks ? myTasks.loop:600;
+    var curr_sync_time = date.getTime();
+    var last_sync_item = LastSync ? LastSync.item : 0;
+    var last_sync_time = LastSync ? LastSync.time : 0;
+    var next_sync_time = curr_sync_time - last_sync_time;
+    var user_sync_freq = Tasks ? Tasks.sync_freq:600;
 
-    if(tobe_report_time > tobe_report_loop * 1000)
+    if(next_sync_time > user_sync_freq * 1000)
     {
-        console.log( '报告....');
+        console.log( '同步....');
         // 报告中转服务器当前情况
-        get('getReport',null,function(rest)
+        $.get(baseServer,{action:'Sync',token:userInfo.token},function(rest)
         {
-            setCache('myAlert',rest.items);
-            setCache('myTasks',rest.tasks);
-            setCache('myLastReport',{count:report_count + 1,time:date.getTime()});
-            var alert_number = rest.items.length;
-            if(alert_number)
+            setCache('Notify',rest.items);
+            setCache('Tasks',rest.tasks);
+            var notify_items = rest.items.length;
+            if(notify_items)
             {
                 chrome.browserAction.setIcon({path:'img/icon_alert.png'});
-                chrome.browserAction.setBadgeText({text:alert_number.toString()});
+                chrome.browserAction.setBadgeText({text:notify_items.toString()});
             }else
             {
                 chrome.browserAction.setIcon({path:'img/icon_green.png'});
                 chrome.browserAction.setBadgeText({text:''});
             }
+
+        },'JSON').always(function(){
+            setCache('LastSync',{item:last_sync_item + 1,time:date.getTime()});        
         });
+
     }else
     {
-        debug_time.setTime(last_report_time + (tobe_report_loop * 1000));
-        console.log( '下次报告：' + debug_time);        
+        debug_time.setTime(last_sync_time + (user_sync_freq * 1000));
+        console.log( '下次同步：' + debug_time);
     }
 
-
     // 取得我已经监控的条目，默认缓存一天
-    var mySiteList = getCache('mySiteList');
-    if(!mySiteList)
+    var SiteList = getCache('SiteList');
+    if(!SiteList && userInfo)
     {
-        get('getMySiteList',null,function(rest)
+        get('SiteList',null,function(rest)
         {
-            setCache('mySiteList',rest);
+            setCache('SiteList',rest);
         });
     }
     
     // 判断是否需要进行监控
-    var myTestTask = getCache('myTestTask');
-    if(!myTestTask)
+    var TestTask = getCache('TestTask');
+    var date  = new Date();
+    if(!TestTask)
     {
-        var date  = new Date();
-        setCache('myTestTask',{test:0,time:date.getTime()});
+        setCache('TestTask',{item:0,time:date.getTime()});
+    }
+    var curr_test_time = date.getTime();
+    var last_test_time = TestTask ? TestTask.time : 0;
+    var last_test_item = TestTask ? TestTask.item : 0;
+    var user_test_less = Tasks ? Tasks.task_less  : 30;
+    var user_test_freq = Tasks ? Tasks.test_freq  : 30 * 60;
+    var user_item_freq = Tasks ? Tasks.titem_freq : 30;
+
+    //console.log((curr_test_time - last_test_time));
+
+    // 如果已完成的监控数量小于当天所需检测的条目数量，并且距离上次监控时间大于30分钟
+    if( last_test_item < user_test_less && (curr_test_time - last_test_time) > (user_test_freq * 1000))
+    {
+        console.log( '监控....');
+        get('TestList',null,function(rest)
+        {
+            setCache('TestList',rest);
+            if(rest != 0)
+            {
+                Sync(rest);
+                // 循环监控直到完成。
+                setInterval(function()
+                {
+                    var TestList = getCache('TestList');
+                    Sync(TestList);
+                },user_item_freq * 1000);
+            }else
+            {
+                var TestTask = getCache('TestTask');
+                setCache('TestTask',{item:TestTask.item,time:date.getTime()});
+            }
+        });
     }else
     {
-        var date  = new Date();
-        var curr_test_time  = date.getTime();
-        var last_test_time  = myTestTask.time;
-        var tobe_test_less = myTasks ? myTasks.less : 30;
-        var tobe_test_freq = myTasks ? myTasks.freq : 30 * 60;
-
-        // 如果已完成的监控数量小于当天所需检测的条目数量，并且距离上次监控时间大于30分钟
-        if(myTestTask.test < tobe_test_less && (curr_test_time - last_test_time) > (tobe_test_freq * 1000))
-        {
-            console.log( '监控....');
-            get('getMyTestList',null,function(rest)
-            {
-                setCache('myTestList',rest);
-                if(rest != 0)
-                {
-                    setReport(rest);
-                    // 取得监控的条目，30秒监控一个，直到完成。
-                    setInterval(function()
-                    {
-                        var myTestList = getCache('myTestList');
-                        setReport(myTestList);
-                    },30 * 1000);
-                }else
-                {
-                    var myTestTask = getCache('myTestTask');
-                    setCache('myTestTask',{test:myTestTask.test,time:date.getTime()});
-                }
-            });
-        }else
-        {
-            debug_time.setTime(last_test_time + (tobe_test_freq * 1000));
-            console.log( '下次监控：' + debug_time);
-        }
+        debug_time.setTime(last_test_time + (user_test_freq * 1000));
+        console.log( '下次监控：' + debug_time);
     }
 }
 
-// 报告检测结构
-function setReport(data,callback)
+// 同步
+function Sync(data,callback)
 {
-    //console.log(data);
     var date = new Date();
     var time_start = date.getTime();
     var item = data.shift();
@@ -156,16 +157,17 @@ function setReport(data,callback)
             var time = (time_close - time_start);
             set('setReport',{uuid:item.item_uuid,code:rest.status,time:time},function(rest)
             {
-                var myTestTask = getCache('myTestTask');
-                setCache('myTestTask',{test:myTestTask.test + 1,time:date.getTime()});
+                console.log( '检测 ' +item.item_uuid+ ' 完毕！');
+                var TestTask = getCache('TestTask');
+                setCache('TestTask',{item:TestTask.item + 1,time:date.getTime()});
                 //console.log(rest);
             });
         });
-        setCache('myTestList',data);
+        setCache('TestList',data);
     }else
     {
-        var myTestTask = getCache('myTestTask');
-        setCache('myTestTask',{test:myTestTask.test,time:date.getTime()});
+        var TestTask = getCache('TestTask');
+        setCache('TestTask',{item:TestTask.item,time:date.getTime()});
     }
 }
 
@@ -176,10 +178,10 @@ function markLogIsread(uuid,_this)
     set('markLogIsread',{logs_uuid:uuid},function(rest)
     {
          $(_this).html('仍在进行...');
-        get('getMySiteList',null,function(rest)
+        get('SiteList',null,function(rest)
         {
-            setCache('mySiteList',rest);
-            $(_this).html('操作成功！').slideUp();
+            setCache('SiteList',rest);
+            $(_this).html('操作成功！').delay(500).fadeOut();
         });
     });
 }
@@ -208,7 +210,7 @@ function getToken()
     var passwd = _pass($('#userpass').val());
     $.post(baseServer,{action:'getToken',user:$('#username').val(),pass:passwd},function(rest)
     {
-        setCache('userInfo',rest);
+        setCache('UserInfo',rest);
         Initialize();
     },'JSON');
 }
@@ -216,7 +218,7 @@ function getToken()
 // 取得当前账户
 function getUser()
 {
-    var userInfo = getCache('userInfo',86400000);
+    var userInfo = getCache('UserInfo',86400000);
     if(userInfo)
     {
         return userInfo;
@@ -229,17 +231,19 @@ function getUser()
 function Insert()
 {
     var link = $('#this_host').text();
-    $('#this_host').html('正在添加....')
+    $('#this_host').html('正在添加....');
+    
     $.post(baseServer,{action:'addLink',token:userInfo.token,link:link}).complete(function(rest)
     {
         $('#this_host').html('继续工作....')
-        get('getMySiteList',null,function(rest)
+        get('SiteList',null,function(rest)
         {
-            $('#this_host').html('添加成功！')
-            setCache('mySiteList',rest);
+            $('#this_host').html('添加成功！').delay(500).fadeOut();
+            setCache('SiteList',rest);
             $('#this_host').slideUp();
         });
     });
+
 };
 
 

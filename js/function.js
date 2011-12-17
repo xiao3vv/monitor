@@ -98,46 +98,47 @@ function LoopCheck()
     
     // 判断是否需要进行监控
     var myTestTask = getCache('myTestTask');
+    var date  = new Date();
     if(!myTestTask)
     {
-        var date  = new Date();
         setCache('myTestTask',{test:0,time:date.getTime()});
+    }
+    var curr_test_time = date.getTime();
+    var last_test_time = myTestTask ? myTestTask.time : 0;
+    var curr_test_less = myTestTask ? myTestTask.test : 0;
+    var tobe_test_less = myTasks ? myTasks.less : 30;
+    var tobe_test_freq = myTasks ? myTasks.freq : 30 * 60;
+    
+    //console.log((curr_test_time - last_test_time));
+
+    // 如果已完成的监控数量小于当天所需检测的条目数量，并且距离上次监控时间大于30分钟
+    if( curr_test_less < tobe_test_less && (curr_test_time - last_test_time) > (tobe_test_freq * 1000))
+    {
+        console.log( '监控....');
+        get('getMyTestList',null,function(rest)
+        {
+            setCache('myTestList',rest);
+            if(rest != 0)
+            {
+                setReport(rest);
+                // 取得监控的条目，30秒监控一个，直到完成。
+                setInterval(function()
+                {
+                    var myTestList = getCache('myTestList');
+                    setReport(myTestList);
+                },30 * 1000);
+            }else
+            {
+                var myTestTask = getCache('myTestTask');
+                setCache('myTestTask',{test:myTestTask.test,time:date.getTime()});
+            }
+        });
     }else
     {
-        var date  = new Date();
-        var curr_test_time  = date.getTime();
-        var last_test_time  = myTestTask.time;
-        var tobe_test_less = myTasks ? myTasks.less : 30;
-        var tobe_test_freq = myTasks ? myTasks.freq : 30 * 60;
-
-        // 如果已完成的监控数量小于当天所需检测的条目数量，并且距离上次监控时间大于30分钟
-        if(myTestTask.test < tobe_test_less && (curr_test_time - last_test_time) > (tobe_test_freq * 1000))
-        {
-            console.log( '监控....');
-            get('getMyTestList',null,function(rest)
-            {
-                setCache('myTestList',rest);
-                if(rest != 0)
-                {
-                    setReport(rest);
-                    // 取得监控的条目，30秒监控一个，直到完成。
-                    setInterval(function()
-                    {
-                        var myTestList = getCache('myTestList');
-                        setReport(myTestList);
-                    },30 * 1000);
-                }else
-                {
-                    var myTestTask = getCache('myTestTask');
-                    setCache('myTestTask',{test:myTestTask.test,time:date.getTime()});
-                }
-            });
-        }else
-        {
-            debug_time.setTime(last_test_time + (tobe_test_freq * 1000));
-            console.log( '下次监控：' + debug_time);
-        }
+        debug_time.setTime(last_test_time + (tobe_test_freq * 1000));
+        console.log( '下次监控：' + debug_time);
     }
+    
 }
 
 // 报告检测结构

@@ -180,7 +180,7 @@ function markLogIsread(uuid,_this)
         get('getMySiteList',null,function(rest)
         {
             setCache('mySiteList',rest);
-            $(_this).html('操作成功！').slideUp();
+            $(_this).html('操作成功！').delay(500).fadeOut();
         });
     });
 }
@@ -230,17 +230,19 @@ function getUser()
 function Insert()
 {
     var link = $('#this_host').text();
-    $('#this_host').html('正在添加....')
+    $('#this_host').html('正在添加....');
+    
     $.post(baseServer,{action:'addLink',token:userInfo.token,link:link}).complete(function(rest)
     {
         $('#this_host').html('继续工作....')
         get('getMySiteList',null,function(rest)
         {
-            $('#this_host').html('添加成功！')
+            $('#this_host').html('添加成功！').delay(500).fadeOut();
             setCache('mySiteList',rest);
             $('#this_host').slideUp();
         });
     });
+
 };
 
 

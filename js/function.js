@@ -1,3 +1,5 @@
+//TODO 规范命名，现在变量名称太糟糕了。。。
+
 var baseServer = 'http://monitor.xiao3.org/';
 var userInfo   = getUser();
 

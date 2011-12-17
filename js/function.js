@@ -3,8 +3,6 @@ var userInfo   = getUser();
 
 $.ajaxSetup({'beforeSend': function(xhr) {xhr.setRequestHeader("Accept-Language", "en-US")}});
 
-//LoopCheck();
-
 function Initialize()
 {
     userInfo   = getUser();
@@ -45,24 +43,48 @@ function Initialize()
 
 function LoopCheck()
 {
-    userInfo   = getUser();
-    // 报告中转服务器当前情况
-    get('getReport',null,function(rest)
-    {
-        setCache('alert',rest.items);
-        setCache('myTask',rest.task);
 
-        var alert_number = rest.items.length;
-        if(alert_number)
+    var debug_time = new Date();//last_test_time;
+    console.log('');
+    console.log( '当前时间：' + debug_time);
+    //console.log(parseInt('sda'));
+
+    userInfo   = getUser();
+    var myTasks = getCache('myTasks');
+    var myLastReport = getCache('myLastReport');
+    var date  = new Date();
+    var curr_report_time = date.getTime();
+    var report_count     = myLastReport ? myLastReport.count : 0;
+    var last_report_time = myLastReport ? myLastReport.time  : 0;
+    var tobe_report_time = curr_report_time - last_report_time;
+    var tobe_report_loop = myTasks ? myTasks.loop:600;
+
+    if(tobe_report_time > tobe_report_loop * 1000)
+    {
+        console.log( '报告....');
+        // 报告中转服务器当前情况
+        get('getReport',null,function(rest)
         {
-            chrome.browserAction.setIcon({path:'img/icon_alert.png'});
-            chrome.browserAction.setBadgeText({text:alert_number.toString()});
-        }else
-        {
-            chrome.browserAction.setIcon({path:'img/icon_green.png'});
-            chrome.browserAction.setBadgeText({text:''});
-        }
-    });
+            setCache('myAlert',rest.items);
+            setCache('myTasks',rest.tasks);
+            setCache('myLastReport',{count:report_count + 1,time:date.getTime()});
+            var alert_number = rest.items.length;
+            if(alert_number)
+            {
+                chrome.browserAction.setIcon({path:'img/icon_alert.png'});
+                chrome.browserAction.setBadgeText({text:alert_number.toString()});
+            }else
+            {
+                chrome.browserAction.setIcon({path:'img/icon_green.png'});
+                chrome.browserAction.setBadgeText({text:''});
+            }
+        });
+    }else
+    {
+        debug_time.setTime(last_report_time + (tobe_report_loop * 1000));
+        console.log( '下次报告：' + debug_time);        
+    }
+
 
     // 取得我已经监控的条目，默认缓存一天
     var mySiteList = getCache('mySiteList');
@@ -75,21 +97,23 @@ function LoopCheck()
     }
     
     // 判断是否需要进行监控
-    var isDoneTask = getCache('isDoneTask');
-    if(!isDoneTask)
+    var myTestTask = getCache('myTestTask');
+    if(!myTestTask)
     {
-        setCache('isDoneTask',{test:0,time:0});
+        var date  = new Date();
+        setCache('myTestTask',{test:0,time:date.getTime()});
     }else
     {
         var date  = new Date();
         var curr_test_time  = date.getTime();
-        var last_test_time  = isDoneTask.time;
-        var myTask = getCache('myTask');
-        var tobe_test_count = myTask ? myTask.less : 30;
-        //console.log(tobe_test_count);
+        var last_test_time  = myTestTask.time;
+        var tobe_test_less = myTasks ? myTasks.less : 30;
+        var tobe_test_freq = myTasks ? myTasks.freq : 30 * 60;
+
         // 如果已完成的监控数量小于当天所需检测的条目数量，并且距离上次监控时间大于30分钟
-        if(isDoneTask.test < tobe_test_count && (curr_test_time - last_test_time) > 30 * 60 * 1000)
+        if(myTestTask.test < tobe_test_less && (curr_test_time - last_test_time) > (tobe_test_freq * 1000))
         {
+            console.log( '监控....');
             get('getMyTestList',null,function(rest)
             {
                 setCache('myTestList',rest);
@@ -102,13 +126,21 @@ function LoopCheck()
                         var myTestList = getCache('myTestList');
                         setReport(myTestList);
                     },30 * 1000);
+                }else
+                {
+                    var myTestTask = getCache('myTestTask');
+                    setCache('myTestTask',{test:myTestTask.test,time:date.getTime()});
                 }
             });
+        }else
+        {
+            debug_time.setTime(last_test_time + (tobe_test_freq * 1000));
+            console.log( '下次监控：' + debug_time);
         }
     }
-
 }
 
+// 报告检测结构
 function setReport(data,callback)
 {
     //console.log(data);
@@ -124,15 +156,20 @@ function setReport(data,callback)
             var time = (time_close - time_start);
             set('setReport',{uuid:item.item_uuid,code:rest.status,time:time},function(rest)
             {
-                var isDoneTask = getCache('isDoneTask');
-                setCache('isDoneTask',{test:isDoneTask.test + 1,time:date.getTime()});
+                var myTestTask = getCache('myTestTask');
+                setCache('myTestTask',{test:myTestTask.test + 1,time:date.getTime()});
                 //console.log(rest);
             });
         });
         setCache('myTestList',data);
+    }else
+    {
+        var myTestTask = getCache('myTestTask');
+        setCache('myTestTask',{test:myTestTask.test,time:date.getTime()});
     }
 }
 
+// 标记异常为已读
 function markLogIsread(uuid,_this)
 {
     $(_this).html('正在进行...');
@@ -147,6 +184,7 @@ function markLogIsread(uuid,_this)
     });
 }
 
+// post方法
 function set(action,args,callback)
 {
     $.post(baseServer,{action:action,token:userInfo.token,send:args},function(rest)
@@ -155,6 +193,7 @@ function set(action,args,callback)
     });
 }
 
+// get方法
 function get(action,args,callback)
 {
     $.get(baseServer,{action:action,token:userInfo.token,send:args},function(rest)
@@ -163,6 +202,7 @@ function get(action,args,callback)
     },'JSON');
 }
 
+// 取得accessToken
 function getToken()
 {
     var passwd = _pass($('#userpass').val());
@@ -173,6 +213,7 @@ function getToken()
     },'JSON');
 }
 
+// 取得当前账户
 function getUser()
 {
     var userInfo = getCache('userInfo',86400000);
@@ -183,12 +224,8 @@ function getUser()
     return false;
 }
 
-function _pass(str)
-{
-    return hex_sha1(hex_md5(str));
-}
 
-
+// 添加监控站点
 function Insert()
 {
     var link = $('#this_host').text();
@@ -237,6 +274,11 @@ function setCache(cache_id,data)
     localStorage[cache_id] = JSON.stringify(temp);
 }
 
+function _pass(str)
+{
+    return hex_sha1(hex_md5(str));
+}
+
 function parseUri(sourceUri)
 {
     var uriPartNames = ["source","protocol","authority","domain","port","path","directoryPath","fileName","query","anchor"],
@@ -247,7 +289,6 @@ function parseUri(sourceUri)
         uri[uriPartNames[i]] = (uriParts[i] ? uriParts[i] : "");
     }
     
-
     if(uri.directoryPath.length > 0){
         uri.directoryPath = uri.directoryPath.replace(/\/?$/, "/");
     }

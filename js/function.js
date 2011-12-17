@@ -109,6 +109,7 @@ function LoopCheck()
     var tobe_test_less = myTasks ? myTasks.less : 30;
     var tobe_test_freq = myTasks ? myTasks.freq : 30 * 60;
 
+
     // 如果已完成的监控数量小于当天所需检测的条目数量，并且距离上次监控时间大于30分钟
     if( curr_test_less < tobe_test_less && (curr_test_time - last_test_time) > (tobe_test_freq * 1000))
     {

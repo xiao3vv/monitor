@@ -1,0 +1,53 @@
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<script src="js/jquery.js"></script>
+<script src="js/crypt.js"></script>
+<script src="js/function.js"></script>
+<style>
+*{margin:0;padding:0;font-size:12px;}
+#this_addr{background:#eee;display: block;padding: 7px 2px;border-bottom:2px solid #ccc;}
+h2 {font-weight:normal;}
+h2 span {cursor:pointer;float:right;display:block;}
+ul {list-style:none;}
+#this_info li {padding:9px 3px;text-align:left;font-size:12px;border-bottom:1px dashed #e8e8e8;}
+#this_info li:hover {background:#eee;}
+#this_info li:hover {background:#eee;}
+#this_info li cite {float:right;font-style:normal;}
+#this_info li.alert {cursor:pointer;background: #ffd28e url('img/alert.png') 2% center no-repeat;border:none;padding-left: 25px;margin-top:2px;}
+#this_info li.add {cursor:pointer;background: url('img/add.png') 2% center no-repeat;border:none;padding-left: 25px;margin-top:2px;}
+
+.hide{display:none;}
+</style></head><body>
+
+<div id="mainBox" style="width:279px;margin: 0 auto;text-align: center;">
+<div style="text-align:left;">
+    <div id="popupBox">
+        帐号：<input type="text" id="username" value="demo@xiao3.org" />
+        <br />
+        密码：<input type="password" id="userpass" value="demo" /><br />
+        <input type="button" value="登陆" onclick="getToken();" />
+    </div>
+    <ul id="this_info">
+        <li id="this_host" onclick="Insert();" class="add hide"></li>
+        <ul class="hide" id="alert_list"></ul>
+    </ul>
+</div>
+</div>
+<script type="text/javascript">
+<!--
+
+    Initialize();
+
+    var sHtml = '';
+    var alert = getCache('alert');
+    for (var i in alert )
+    {
+        var data = alert[i];
+        sHtml += '<li onclick="markLogIsread(\''+data.logs_uuid+'\',this)" class="alert">'+data.item_link+'</li>'
+    }
+    //console.log(sHtml);
+    $('#alert_list').html(sHtml).show();
+        
+
+//-->
+</script>
+</body></html>

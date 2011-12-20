@@ -1,14 +1,14 @@
 //TODO 规范命名，现在变量名称太糟糕了。。。
 
 var baseServer = 'http://monitor.xiao3.org/';
-var userInfo   = getUser();
+var UserInfo   = getUser();
 
 $.ajaxSetup({'beforeSend': function(xhr) {xhr.setRequestHeader("Accept-Language", "en-US")}});
 
 function Initialize()
 {
-    userInfo   = getUser();
-    if(!userInfo) {return;}
+    UserInfo   = getUser();
+    if(!UserInfo) {return;}
     Loop();
 
     chrome.tabs.getSelected(null,function(tab)
@@ -39,38 +39,44 @@ function Initialize()
         }
     });
 
-    $('#popupBox').html('<h2 id="this_addr">'+userInfo.user_mail+'</h2>');
+    $('#popupBox').html('<h2 id="this_addr">'+UserInfo.user_mail+'</h2>');
 }
 
 function Loop()
 {
-    var debug_time = new Date();//last_test_time;
+    /*
+    var debug_time = new Date();
     console.log('');
-    console.log( '当前时间：' + debug_time);
+    console.log( '当前时间：' + date_str());
+    */
 
-    userInfo  = getUser();
-    var Tasks = getCache('Tasks');
-    var LastSync = getCache('LastSync');
-    var date  = new Date();
-    var curr_sync_time = date.getTime();
-    var last_sync_item = LastSync ? LastSync.item : 0;
-    var last_sync_time = LastSync ? LastSync.time : 0;
+    UserInfo  = getUser();
+
+    var UserConf = getCache('UserConf') || {sync_freq:600,task_freq:30};
+    var LastSync = getCache('LastSync') || {item:0,time:0};
+
+    var curr_sync_time = time_str();
+    var last_sync_item = LastSync.item;
+    var last_sync_time = LastSync.time;
     var next_sync_time = curr_sync_time - last_sync_time;
-    var user_sync_freq = Tasks ? Tasks.sync_freq:600;
-    
+    var user_sync_freq = UserConf.sync_freq;
+
     if(next_sync_time > user_sync_freq * 1000)
     {
-        console.log( '同步....');
-        // 报告中转服务器当前情况
-        $.get(baseServer,{action:'Sync',token:userInfo.token},function(rest)
+        //console.log( '同步....');
+        var TestResult  = getCache('TestResult') || 0;
+        $.post(baseServer,{action:'Sync',token:UserInfo.token,args:TestResult},function(rest)
         {
-            setCache('Notify',rest.items);
-            setCache('Tasks',rest.tasks);
-            var notify_items = rest.items.length;
-            if(notify_items)
+            setCache('ErroList',rest.erro_list);// 网站异常提醒
+            setCache('TaskList',rest.task_list);// 检测任务列表
+            setCache('UserConf',rest.user_conf);// 用户设置
+            setCache('TestResult',[]);
+
+            var erro_list = rest.erro_list;
+            if(erro_list)
             {
                 chrome.browserAction.setIcon({path:'img/icon_alert.png'});
-                chrome.browserAction.setBadgeText({text:notify_items.toString()});
+                chrome.browserAction.setBadgeText({text:erro_list.toString()});
             }else
             {
                 chrome.browserAction.setIcon({path:'img/icon_green.png'});
@@ -78,97 +84,70 @@ function Loop()
             }
 
         },'JSON').always(function(){
-            setCache('LastSync',{item:last_sync_item + 1,time:date.getTime()});        
+            setCache('LastSync',{item:last_sync_item + 1,time:time_str()});
         });
 
     }else
     {
+        /*
         debug_time.setTime(last_sync_time + (user_sync_freq * 1000));
-        console.log( '下次同步：' + debug_time);
+        console.log( '下次同步：' + date_str(debug_time));
+        */
     }
 
     // 取得我已经监控的条目，默认缓存一天
     var SiteList = getCache('SiteList');
-    if(!SiteList && userInfo)
+    if(!SiteList && UserInfo)
     {
         get('SiteList',null,function(rest)
         {
             setCache('SiteList',rest);
         });
     }
-    
-    // 判断是否需要进行监控
-    var TestTask = getCache('TestTask');
-    var date  = new Date();
-    if(!TestTask)
-    {
-        setCache('TestTask',{item:0,time:date.getTime()});
-    }
-    var curr_test_time = date.getTime();
-    var last_test_time = TestTask ? TestTask.time : 0;
-    var last_test_item = TestTask ? TestTask.item : 0;
-    var user_test_less = Tasks ? Tasks.task_less  : 30;
-    var user_test_freq = Tasks ? Tasks.test_freq  : 30 * 60;
-    var user_item_freq = Tasks ? Tasks.item_freq : 30;
-    
-    //user_test_freq = 10;
-    //console.log((curr_test_time - last_test_time));
 
-    // 如果已完成的监控数量小于当天所需检测的条目数量，并且距离上次监控时间大于30分钟
-    if( last_test_item < user_test_less && (curr_test_time - last_test_time) > (user_test_freq * 1000))
-    {
-        console.log( '监控....');
-        get('TestList',null,function(rest)
-        {
-            setCache('TestList',rest);
-            if(rest != 0)
-            {
-                Monitor(rest);
-                // 循环监控直到完成。
-                setInterval(function()
-                {
-                    var TestList = getCache('TestList');
-                    Monitor(TestList);
-                },user_item_freq * 1000);
-            }else
-            {
-                var TestTask = getCache('TestTask');
-                setCache('TestTask',{item:TestTask.item,time:date.getTime()});
-            }
-        });
-    }else
-    {
-        debug_time.setTime(last_test_time + (user_test_freq * 1000));
-        console.log( '下次监控：' + debug_time);
-    }
+    Monitor(UserConf);
 }
 
 // 
-function Monitor(data,callback)
+function Monitor(UserConf)
 {
-    var date = new Date();
-    var time_start = date.getTime();
-    var item = data.shift();
-    if(item)
+    var time_start = time_str();
+    var task_data = getCache('TaskList');
+    var last_time = getCacheTime('TaskList');
+    var task_freq = UserConf.task_freq * 1000;
+    //console.log(time_start - last_time);
+    if(task_data.length && (time_start - last_time) > task_freq)
     {
-        $.get(item.item_link).complete(function(rest)
+        //console.log( '开始检测');
+        var item = task_data.shift();
+        $.get(item.item_link).always(function(rest)
         {
-            var date = new Date();
-            var time_close = date.getTime();
+            var time_close = time_str();
             var time = (time_close - time_start);
-            set('setReport',{uuid:item.item_uuid,code:rest.status,time:time},function(rest)
-            {
-                console.log( '检测 ' +item.item_uuid+ ' 完毕！');
-                var TestTask = getCache('TestTask');
-                setCache('TestTask',{item:TestTask.item + 1,time:date.getTime()});
-                //console.log(rest);
-            });
+            
+            // 保存检测结果
+            var TestResult  = getCache('TestResult') || [];
+            TestResult.push({uuid:item.item_uuid,code:rest.status,time:time});
+            setCache('TestResult',TestResult);
+            
+            setCache('TaskList',task_data);
+
+            //console.log( '检测 ' +item.item_uuid+ ' 完毕！');
+
         });
-        setCache('TestList',data);
     }else
     {
-        var TestTask = getCache('TestTask');
-        setCache('TestTask',{item:TestTask.item,time:date.getTime()});
+        /*
+        if(task_data.length)
+        {
+            var debug_time = new Date();
+            debug_time.setTime(last_time + task_freq);
+            console.log( '下次检测：' + date_str(debug_time));
+        }else
+        {
+            console.log( '无需检测');
+        }
+        */
     }
 }
 
@@ -190,7 +169,7 @@ function markLogIsread(uuid,_this)
 // post方法
 function set(action,args,callback)
 {
-    $.post(baseServer,{action:action,token:userInfo.token,send:args},function(rest)
+    $.post(baseServer,{action:action,token:UserInfo.token,args:args},function(rest)
     {
         callback.call(null,rest);
     });
@@ -199,7 +178,7 @@ function set(action,args,callback)
 // get方法
 function get(action,args,callback)
 {
-    $.get(baseServer,{action:action,token:userInfo.token,send:args},function(rest)
+    $.get(baseServer,{action:action,token:UserInfo.token,args:args},function(rest)
     {
         callback.call(null,rest);
     },'JSON');
@@ -234,7 +213,7 @@ function Insert()
     var link = $('#this_host').text();
     $('#this_host').html('正在添加....');
     
-    $.post(baseServer,{action:'addLink',token:userInfo.token,link:link}).complete(function(rest)
+    $.post(baseServer,{action:'addLink',token:UserInfo.token,link:link}).complete(function(rest)
     {
         $('#this_host').html('继续工作....')
         get('SiteList',null,function(rest)
@@ -247,6 +226,16 @@ function Insert()
 
 };
 
+function getCacheTime(cache_id)
+{
+    if(localStorage[cache_id])
+    {
+        var temp = JSON.parse(localStorage[cache_id]);
+        return temp.time;
+    }
+
+    return 0;
+}
 
 function getCache(cache_id,life_time)
 {
@@ -263,7 +252,7 @@ function getCache(cache_id,life_time)
         if((time - test) < (1000 * life_time))
         {
             var data = temp.data;
-            return data == '[]' ? 0 :data;
+            return data ? data:false;
         }
 
         return false;
@@ -301,3 +290,24 @@ function parseUri(sourceUri)
     return uri;
 }
 
+function date_str(time_str)
+{
+    var date = new Date;
+    if(typeof time_str != 'undefined')
+    {
+        date.setTime(time_str);
+    }
+    return date.getFullYear() + '-' + time_pad(date.getMonth()) + '-' + time_pad(date.getDate()) + ' ' + time_pad(date.getHours()) + ':' + time_pad(date.getMinutes())+ ':' + time_pad(date.getSeconds());
+}
+
+function time_str()
+{
+    var date = new Date;
+    return date.getTime();
+}
+
+function time_pad(i)
+{
+    if (i<10) {i="0" + i}
+    return i
+}

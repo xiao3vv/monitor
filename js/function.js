@@ -57,7 +57,7 @@ function Loop()
     var last_sync_time = LastSync ? LastSync.time : 0;
     var next_sync_time = curr_sync_time - last_sync_time;
     var user_sync_freq = Tasks ? Tasks.sync_freq:600;
-
+    
     if(next_sync_time > user_sync_freq * 1000)
     {
         console.log( '同步....');
@@ -109,8 +109,9 @@ function Loop()
     var last_test_item = TestTask ? TestTask.item : 0;
     var user_test_less = Tasks ? Tasks.task_less  : 30;
     var user_test_freq = Tasks ? Tasks.test_freq  : 30 * 60;
-    var user_item_freq = Tasks ? Tasks.titem_freq : 30;
-
+    var user_item_freq = Tasks ? Tasks.item_freq : 30;
+    
+    //user_test_freq = 10;
     //console.log((curr_test_time - last_test_time));
 
     // 如果已完成的监控数量小于当天所需检测的条目数量，并且距离上次监控时间大于30分钟
@@ -122,12 +123,12 @@ function Loop()
             setCache('TestList',rest);
             if(rest != 0)
             {
-                Sync(rest);
+                Monitor(rest);
                 // 循环监控直到完成。
                 setInterval(function()
                 {
                     var TestList = getCache('TestList');
-                    Sync(TestList);
+                    Monitor(TestList);
                 },user_item_freq * 1000);
             }else
             {
@@ -142,8 +143,8 @@ function Loop()
     }
 }
 
-// 同步
-function Sync(data,callback)
+// 
+function Monitor(data,callback)
 {
     var date = new Date();
     var time_start = date.getTime();
